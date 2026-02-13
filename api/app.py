@@ -69,7 +69,7 @@ def follow():
 def unfollow():
     payload = request.json
     user_id = int(payload['id'])
-    user_id_to_follow = int(payload['follow'])
+    user_id_to_follow = int(payload['unfollow'])
 
     if user_id not in app.users or user_id_to_follow not in app.users:
         return '사용자가 존재하지 않습니다.', 400
@@ -113,4 +113,22 @@ def get_users():
         for user in app.users.values()
     ]
     return jsonify(user_list)
-    
+
+# 트윗 삭제 기능
+@app.route("/tweet", methods=["DELETE"])
+def delete_tweet():
+    data = request.get_json()
+
+    user_id = int(data.get("id"))
+    tweet_content = data.get("tweet")
+
+    if user_id not in app.users:
+        return '사용자가 존재하지 않습니다.', 400
+
+    for tweet in app.tweets:
+        if tweet["user_id"] == user_id and tweet["tweet"] == tweet_content:
+            app.tweets.remove(tweet)
+            return jsonify({"message": "삭제 완료"}), 200
+
+    return '삭제할 수 없는 트윗입니다.', 400
+

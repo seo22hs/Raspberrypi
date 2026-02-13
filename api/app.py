@@ -1,7 +1,98 @@
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
+from flask.json.provider import DefaultJSONProvider
+import json
+
+class CustomJSONProvider(DefaultJSONProvider):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return list(obj)
+
+        return super().default(obj)
 
 app = Flask(__name__)
 app.users = {}
+app.id_count = 1
+app.tweets = []
+app.json_provider_class = CustomJSONProvider
+app.json = CustomJSONProvider(app)
+
+@app.route("/ping", methods=['GET'])
+def ping():
+    return "pong"
+
+@app.route("/sign-up", methods=['POST'])
+def sign_up():
+    new_user = request.json
+    new_user["id"] =app.id_count
+    app.users[app.id_count] =new_user
+    app.id_count = app.id_count + 1
+
+    return jsonify(new_user)
+
+@app.route('/tweet', methods=['POST'])
+def tweet():
+    payload = request.json
+    user_id = int(payload['id'])
+    tweet = payload['tweet']
+
+    if user_id not in app.users:
+        return '사용자가 존재하지 않습니다.', 400
+
+    if len(tweet) > 300:
+        return '300자를 초과했습니다.' , 400
+    
+    user_id = int(payload['id'])
+
+    app.tweets.append({
+        'user_id' : user_id,
+        'tweet'   : tweet
+    })
+
+    return '', 200
+
+@app.route('/follow', methods=['POST'])
+def follow():
+    payload = request.json
+    user_id = int(payload['id'])
+    user_id_to_follow = int(payload['follow'])
+    
+
+    if user_id not in app.users or user_id_to_follow not in app.users:
+        return '사용자가 존재하지 않습니다.', 400
+    
+    user = app.users[user_id]
+    user.setdefault('follow', set()).add(user_id_to_follow)
+
+    return jsonify(user)
+
+@app.route('/unfollow', methods=['POST'])
+def unfollow():
+    payload = request.json
+    user_id = int(payload['id'])
+    user_id_to_follow = int(payload['follow'])
+
+    if user_id not in app.users or user_id_to_follow not in app.users:
+        return '사용자가 존재하지 않습니다.', 400
+        
+    user = app.users[user_id]
+    user.setdefault('follow', set()).discard(user_id_to_follow) #키가 존재하지 않으면 디폴트값을 저장하고, 만일 키가 이미 존재하면 해당 값을 읽어들이는 기능 
+
+    return jsonify(user)
+
+@app.route('/timeline/<int:user_id>', methods=['GET'])
+def timeline(user_id):
+    if user_id not in app.users:
+        return '사용자가 존재하지 않습니다.', 400
+
+    follow_list = app.users[user_id].get('follow', set())
+    follow_list.add(user_id)
+    timeline = [tweet for tweet in app.tweets if tweet ['user_id'] in follow_list]
+
+    return jsonify({
+        'user_id' : user_id,
+        'timeline' : timeline
+    })
+
 
 # 유저 정보 조회 API
 @app.route("/user/<int:user_id>", methods=['GET'])
@@ -11,3 +102,15 @@ def get_user(user_id):
         return '사용자가 존재하지 않습니다.', 400
 
     return jsonify(app.users[user_id])
+
+
+# 전체 유저 목록 조회
+@app.route("/users", methods=["GET"])
+def get_users():
+
+    user_list = [
+        {key: value for key, value in user.items() if key != "password"}
+        for user in app.users.values()
+    ]
+    return jsonify(user_list)
+    
